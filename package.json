@@ -1,0 +1,43 @@
+{
+  "name": "mapperx-ts",
+  "version": "1.0.0",
+  "description": "Type-safe and lightweight data mapper for transforming API DTOs into domain/UI models in TypeScript",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "keywords": [
+    "mapper",
+    "typescript",
+    "dto",
+    "transform",
+    "validator",
+    "type-safe",
+    "data-mapper",
+    "api-mapper",
+    "schema-mapper",
+    "domain-mapper"
+  ],
+  "author": "SENGUANA WISUMA EMILIO YANKUAM",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/senguanasoft/mapperx-ts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/senguanasoft/mapperx-ts/issues"
+  },
+  "homepage": "https://github.com/senguanasoft/mapperx-ts#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.0"
+  }
+}
