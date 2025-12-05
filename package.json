@@ -6,8 +6,10 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "npm run build",
-    "test": "echo \"No tests yet\" && exit 0"
+    "start": "npx ts-node test.ts",
+    "prepublishOnly": "npm run build", 
+    "test": "vitest",
+  "test:run": "vitest run"
   },
   "keywords": [
     "mapper",
@@ -37,7 +39,9 @@
     "LICENSE"
   ],
   "devDependencies": {
+    "@types/node": "^24.10.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^4.0.15"
   }
 }

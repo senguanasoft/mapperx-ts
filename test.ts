@@ -1,4 +1,4 @@
-import { yankuam, yks, yc, type YankuamSchema } from "./src/index";
+import { mapperx, mxs, mxc, type MapperxSchema } from "./src/index";
 
 interface OrderDto {
   id_articulo: string;
@@ -14,56 +14,52 @@ interface OrderModel {
   total: number;
   pantalon: string;
   status: string;
+  test: string;
 }
 
-const schema: YankuamSchema<OrderDto, OrderModel> = {
+const orderSchema: MapperxSchema<OrderDto, OrderModel> = {
   productId: "id_articulo",
 
   unitPrice: {
     from: "precio_unitario",
-    validate: yks.number,
+    validate: mxs.number,
   },
 
   quantity: {
     from: "cantidad",
-    validate: yks.number,
+    validate: mxs.number,
   },
 
-  // ✅ Computed field simple
-  total: yc((mapped) => {
+  //  Computed field básico
+  total: mxc((mapped, src) => {
+    console.log("Calculating total...", mapped);
+    console.log("Calculating src...", src);
     return mapped.unitPrice! * mapped.quantity!;
   }),
 
-  // ✅ Computed field con lógica
-  pantalon: yc((mapped) => {
-    console.log("Calculando pantalon para cantidad:", mapped);
+  // Computed field con lógica
+  pantalon: mxc((mapped) => {
     return mapped.quantity! > 10 ? "Muchos pantalones" : "Pocos pantalones";
   }),
 
-  // ✅ Transform normal
+  //  Transform normal
   status: {
     from: "estadoDoc",
     transform: (val) => (val === "ACTIVO" ? "Active" : "Cancelled"),
   },
+  test: mxc((_, src) => {
+    return `Test field with productId: ${src.id_articulo}`;
+  }),
 };
 
-// Prueba
-const dto = {
+// ✅ Test real
+const dto: OrderDto = {
   id_articulo: "A001",
   precio_unitario: "10.50",
   cantidad: "15",
   estadoDoc: "ACTIVO",
 };
 
-const model = yankuam(dto, schema);
+const model = mapperx(dto, orderSchema);
+
 console.log(model);
-/*
-{
-  productId: "A001",
-  unitPrice: 10.5,
-  quantity: 15,
-  total: 157.5,
-  pantalon: "Muchos pantalones",
-  status: "Active"
-}
-*/
