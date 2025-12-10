@@ -1,323 +1,452 @@
 // ============================================================================
 // MAPPERX-TS - ENTERPRISE EDITION
-// Type-safe DTO → Domain Mapper for TypeScript
-// Soporte para campos computados y propiedades adicionales
+// Main Entry Point - Exports Organizados y Claros
 // ============================================================================
 
-type MapperxValidator<T> = (val: unknown) => T;
-type MapperxTransform<In, Out> = (val: In, src?: any) => Out;
-type MapperxComputed<Ui, K extends keyof Ui> = (
-  mapped: Partial<Ui>,
-  src: any
-) => Ui[K];
-
-type MapperxFieldSpec<Api, Ui, K extends keyof Ui = keyof Ui> =
-  | keyof Api
-  | {
-      from: keyof Api;
-      validate?: MapperxValidator<any>;
-      transform?: MapperxTransform<any, Ui[K]>;
-      default?: Ui[K];
-      required?: boolean;
-      nullable?: boolean;
-    }
-  | {
-      computed: MapperxComputed<Ui, K>;
-      default?: Ui[K];
-    };
-
-type MapperxSchema<Api, Ui> = {
-  [K in keyof Ui]: MapperxFieldSpec<Api, Ui, K>;
-};
-
 // ============================================================================
-// TYPE GUARDS
+// 1. CORE - Funciones y tipos principales
 // ============================================================================
 
-function isObjectSpec<Api, Ui, K extends keyof Ui>(
-  spec: MapperxFieldSpec<Api, Ui, K>
-): spec is {
-  from: keyof Api;
-  validate?: MapperxValidator<any>;
-  transform?: MapperxTransform<any, Ui[K]>;
-  default?: Ui[K];
-  required?: boolean;
-  nullable?: boolean;
-} {
-  return typeof spec === "object" && spec !== null && "from" in spec;
-}
+export {
+  // Función principal de mapeo síncrono
+  mapperx,
+  mx, // Alias corto
 
-function isComputedSpec<Api, Ui, K extends keyof Ui>(
-  spec: MapperxFieldSpec<Api, Ui, K>
-): spec is {
-  computed: MapperxComputed<Ui, K>;
-  default?: Ui[K];
-} {
-  return typeof spec === "object" && spec !== null && "computed" in spec;
-}
+  // Batch processing
+  mapperxBatch,
+  mxBatch, // Alias corto
 
-// ============================================================================
-// VALIDATORS
-// ============================================================================
-
-export const mxs = {
-  string: (val: unknown): string => {
-    if (typeof val === "string") return val;
-    if (val == null) throw new Error("Expected string, got null/undefined");
-    return String(val);
-  },
-
-  number: (val: unknown): number => {
-    if (typeof val === "number" && !isNaN(val)) return val;
-    const n = Number(val);
-    if (isNaN(n)) throw new Error(`Cannot convert "${val}" to number`);
-    return n;
-  },
-
-  boolean: (val: unknown): boolean => {
-    if (typeof val === "boolean") return val;
-    if (val === "true" || val === "1" || val === 1) return true;
-    if (val === "false" || val === "0" || val === 0) return false;
-    throw new Error(`Cannot convert "${val}" to boolean`);
-  },
-
-  date: (val: unknown): Date => {
-    if (val instanceof Date) return val;
-    const d = new Date(val as any);
-    if (isNaN(d.getTime())) throw new Error(`Invalid date: "${val}"`);
-    return d;
-  },
-
-  array:
-    <T>(itemValidator: MapperxValidator<T>) =>
-    (val: unknown): T[] => {
-      if (!Array.isArray(val)) throw new Error("Expected array");
-      return val.map((item, i) => {
-        try {
-          return itemValidator(item);
-        } catch (e) {
-          throw new Error(`Array[${i}]: ${(e as Error).message}`);
-        }
-      });
-    },
-
-  optional:
-    <T>(validator: MapperxValidator<T>) =>
-    (val: unknown): T | undefined => {
-      if (val === undefined || val === null) return undefined;
-      return validator(val);
-    },
-
-  nullable:
-    <T>(validator: MapperxValidator<T>) =>
-    (val: unknown): T | null => {
-      if (val === null) return null;
-      return validator(val);
-    },
-
-  enum:
-    <T extends string>(...values: T[]) =>
-    (val: unknown): T => {
-      if (values.includes(val as T)) return val as T;
-      throw new Error(`Expected one of [${values.join(", ")}], got "${val}"`);
-    },
-
-  custom: <T>(fn: (val: unknown) => T): MapperxValidator<T> => fn,
-};
-
-// ============================================================================
-// ERROR
-// ============================================================================
-
-export class MapperxError extends Error {
-  constructor(
-    public field: string,
-    public sourceField: string | null,
-    public cause: Error
-  ) {
-    const source = sourceField ? ` (from "${sourceField}")` : " (computed)";
-    super(`Mapperx mapping error at "${field}"${source}: ${cause.message}`);
-    this.name = "MapperxError";
-  }
-}
-
-// ============================================================================
-// OPTIONS
-// ============================================================================
-
-export interface MapperxOptions {
-  strict?: boolean;
-  skipInvalid?: boolean;
-}
-
-// ============================================================================
-// MAIN MAPPER
-// ============================================================================
-
-export function mapperx<Api extends object, Ui extends object>(
-  api: Api,
-  schema: MapperxSchema<Api, Ui>,
-  options: MapperxOptions = {}
-): Ui {
-  const out = {} as any;
-  const computedFields: Array<keyof Ui> = [];
-
-  // PHASE 1: Regular fields
-  for (const key of Object.keys(schema) as (keyof Ui)[]) {
-    const spec = schema[key];
-
-    if (isComputedSpec(spec)) {
-      computedFields.push(key);
-      continue;
-    }
-
-    try {
-      if (!isObjectSpec(spec)) {
-        const val = (api as any)[spec as any];
-        if (val === undefined) {
-          throw new Error("Field is undefined in source");
-        }
-        out[key] = val;
-        continue;
-      }
-
-      const sourceVal = (api as any)[spec.from];
-
-      if (sourceVal === undefined) {
-        if (spec.default !== undefined) {
-          out[key] = spec.default;
-          continue;
-        }
-        if (spec.required !== false) {
-          throw new Error("Required field is undefined");
-        }
-        continue;
-      }
-
-      if (sourceVal === null && !spec.nullable) {
-        throw new Error("Field is null but not nullable");
-      }
-
-      let val = sourceVal;
-
-      if (spec.validate) val = spec.validate(sourceVal);
-      if (spec.transform) val = spec.transform(val, api);
-
-      out[key] = val;
-    } catch (e) {
-      const sourceField = isObjectSpec(spec) ? spec.from : spec;
-      const err = new MapperxError(
-        String(key),
-        String(sourceField),
-        e as Error
-      );
-
-      if (!options.skipInvalid) throw err;
-    }
-  }
-
-  // PHASE 2: Computed fields
-  for (const key of computedFields) {
-    const spec = schema[key];
-
-    if (!isComputedSpec(spec)) continue;
-
-    try {
-      out[key] = spec.computed(out, api);
-    } catch (e) {
-      const err = new MapperxError(String(key), null, e as Error);
-
-      if (options.skipInvalid) {
-        if (spec.default !== undefined) out[key] = spec.default;
-        continue;
-      }
-
-      throw err;
-    }
-  }
-
-  if (options.strict) {
-    const schemaFields = new Set<keyof Api>(
-      (Object.keys(schema) as (keyof Ui)[])
-        .map((k) => {
-          const s = schema[k];
-          return isObjectSpec(s) ? s.from : null;
-        })
-        .filter((f): f is keyof Api => f !== null)
-    );
-
-    const extraFields = Object.keys(api).filter(
-      (k) => !schemaFields.has(k as keyof Api)
-    );
-
-    if (extraFields.length > 0) {
-      console.warn(`[Mapperx] Extra fields: ${extraFields.join(", ")}`);
-    }
-  }
-
-  return out as Ui;
-}
-
-export const mx = mapperx;
-
-// ============================================================================
-// BATCH
-// ============================================================================
-
-export interface MapperxBatchResult<T> {
-  data: T[];
-  errors: Array<{ index: number; item: any; error: MapperxError }>;
-}
-
-export function mapperxBatch<Api extends object, Ui extends object>(
-  items: Api[],
-  schema: MapperxSchema<Api, Ui>,
-  options: MapperxOptions = {}
-): MapperxBatchResult<Ui> {
-  const data: Ui[] = [];
-  const errors: MapperxBatchResult<Ui>["errors"] = [];
-
-  items.forEach((item, i) => {
-    try {
-      data.push(mapperx(item, schema, options));
-    } catch (e) {
-      errors.push({ index: i, item, error: e as MapperxError });
-    }
-  });
-
-  return { data, errors };
-}
-
-export const mxBatch = mapperxBatch;
-
-// ============================================================================
-// COMPUTED BUILDER
-// ============================================================================
-
-export function mxc<Ui, K extends keyof Ui>(
-  fn: (mapped: Partial<Ui>, src: any) => Ui[K]
-): { computed: MapperxComputed<Ui, K> } {
-  return { computed: fn };
-}
-
-mxc.withDefault = function <Ui, K extends keyof Ui>(
-  fn: (mapped: Partial<Ui>, src: any) => Ui[K],
-  defaultValue: Ui[K]
-): { computed: MapperxComputed<Ui, K>; default: Ui[K] } {
-  return { computed: fn, default: defaultValue };
-};
-
-// Aliases
-export const mapperxComputed = mxc;
-
-// ============================================================================
-// TYPES EXPORT
-// ============================================================================
-
-export type {
+  // Tipos de schema
   MapperxSchema,
   MapperxFieldSpec,
-  MapperxValidator,
+
+  // Tipos de especificaciones (definidos en core.ts)
+  ObjectFieldSpec, // { from: ..., validate: ..., transform: ... }
+  NestedFieldSpec, // { from: ..., schema: ... }
+  ComputedFieldSpec, // { computed: ... } - SOURCE OF TRUTH
+
+  // Tipos de funciones
   MapperxTransform,
   MapperxComputed,
+
+  // Configuración
+  MapperxOptions,
+
+  // Error handling
+  MapperxError,
+
+  // Batch result
+  MapperxBatchResult,
+} from "./core";
+
+// ============================================================================
+// 2. TYPES - Sistema de tipos avanzado
+// ============================================================================
+
+export {
+  // Tipos de paths
+  Path, // "user" | "user.name" | "user.profile.email"
+  DeepKeys, // Genera todos los paths posibles de un objeto
+  PathValue, // Obtiene el tipo en un path específico
+  IsValidPath, // Verifica si un path es válido
+
+  // Utility types
+  KeysOfType, // Obtiene keys que tienen un tipo específico
+  OptionalKeys, // Obtiene keys opcionales
+  RequiredKeys, // Obtiene keys requeridas
+  PartialBy, // Hace específicas keys opcionales
+  RequiredBy, // Hace específicas keys requeridas
+
+  // Internal types (por si se necesitan)
+  Primitive,
+  NonNavigable,
+  IsArray,
+  ArrayElement,
+} from "./types";
+
+// ============================================================================
+// 3. VALIDATORS - Validadores de datos
+// ============================================================================
+
+export {
+  // Validadores básicos
+  mxs, // { string, number, boolean, date, array, etc. }
+
+  // Validadores extendidos
+  mxsExt, // { email, url, uuid, min, max, pattern, etc. }
+
+  // Tipos
+  MapperxValidator, // (val: unknown) => T
+  ValidationError, // Error de validación
+} from "./validators";
+
+// ============================================================================
+// 4. TRANSFORMS - Transformadores de datos
+// ============================================================================
+
+export {
+  // String transforms
+  mxt, // { trim, toLowerCase, toUpperCase, capitalize, etc. }
+
+  // Number transforms
+  mxtNumber, // { round, ceil, floor, abs, clamp, etc. }
+
+  // Array transforms
+  mxtArray, // { join, filter, map, first, last, unique, etc. }
+
+  // Date transforms
+  mxtDate, // { format, toISO, toTimestamp, toUnix }
+
+  // General transforms
+  mxtGeneral, // { stringify, parseJson, defaultTo, pipe }
+
+  // Error
+  TransformError, // Error de transformación
+} from "./transforms";
+
+// ============================================================================
+// 5. COMPUTED - Campos computados
+// ============================================================================
+
+export {
+  // Builder principal
+  mxc, // Función para crear campos computados
+
+  // Aliases
+  mapperxComputed,
+  computed,
+
+  // Tipos
+  // ComputedFieldSpec ya está exportado desde core.ts (línea 26)
+  ComputedFieldSpecWithDefault, // Único tipo adicional en computed.ts
+} from "./computed";
+
+// Namespace con helpers adicionales para computed fields
+// mxc.withDefault()
+// mxc.combine()
+// mxc.conditional()
+// mxc.fromSource()
+// mxc.fromMapped()
+// mxc.constant()
+// mxc.copy()
+// mxc.transform()
+// mxc.async()
+
+// ============================================================================
+// 6. ASYNC - Mapeo asíncrono
+// ============================================================================
+
+export {
+  // Funciones async
+  mapperxAsync,
+  mxa, // Alias corto
+  mapperxBatchAsync,
+  mxBatchAsync, // Alias corto
+
+  // Tipos async
+  AsyncMapperxValidator,
+  AsyncMapperxTransform,
+  AsyncMapperxComputed,
+  AsyncMapperxSchema,
+  AsyncMapperxFieldSpec,
+  AsyncObjectFieldSpec,
+  AsyncNestedFieldSpec,
+  AsyncComputedFieldSpec,
+  AsyncMapperxBatchResult,
+
+  // Helpers async
+  mxsAsync, // { fetchJson, withDelay, withRetry }
+} from "./async";
+
+// ============================================================================
+// 7. TYPE HELPERS - Helpers de inferencia de tipos
+// ============================================================================
+
+import type { MapperxSchema } from "./core";
+
+/**
+ * Infiere el tipo de salida de un schema
+ *
+ * @example
+ * ```typescript
+ * const schema = {
+ *   id: 'user_id',
+ *   name: 'user_name'
+ * } as const;
+ *
+ * type Output = InferSchemaOutput<typeof schema>;
+ * // { id: any; name: any }
+ * ```
+ */
+export type InferSchemaOutput<S> = S extends MapperxSchema<any, infer Ui>
+  ? Ui
+  : never;
+
+/**
+ * Infiere el tipo de entrada de un schema
+ *
+ * @example
+ * ```typescript
+ * const schema = {
+ *   id: 'user_id',
+ *   name: 'user_name'
+ * } as const;
+ *
+ * type Input = InferSchemaInput<typeof schema>;
+ * // { user_id: any; user_name: any }
+ * ```
+ */
+export type InferSchemaInput<S> = S extends MapperxSchema<infer Api, any>
+  ? Api
+  : never;
+
+// ============================================================================
+// 8. TYPE ALIASES - Aliases para uso más cómodo
+// ============================================================================
+
+import type {
+  MapperxFieldSpec,
+  MapperxTransform,
+  MapperxComputed,
+} from "./core";
+
+import type { MapperxValidator } from "./validators";
+
+/**
+ * Alias para schema
+ */
+export type Schema<Api, Ui> = MapperxSchema<Api, Ui>;
+
+/**
+ * Alias para validador
+ */
+export type Validator<T> = MapperxValidator<T>;
+
+/**
+ * Alias para transformador
+ */
+export type Transform<In, Out> = MapperxTransform<In, Out>;
+
+/**
+ * Alias para computed
+ */
+export type Computed<Ui, K extends keyof Ui> = MapperxComputed<Ui, K>;
+
+/**
+ * Alias para field spec
+ */
+export type FieldSpec<Api, Ui, K extends keyof Ui> = MapperxFieldSpec<
+  Api,
+  Ui,
+  K
+>;
+
+// ============================================================================
+// 9. UTILITY FUNCTIONS - Funciones de utilidad
+// ============================================================================
+
+import { MapperxError, MapperxOptions } from "./core";
+
+/**
+ * Crea un schema con mejor inferencia de tipos
+ *
+ * @example
+ * ```typescript
+ * const schema = createSchema<ApiUser, UiUser>({
+ *   id: 'user_id',
+ *   email: { from: 'email_address', validate: mxs.email }
+ * });
+ * ```
+ */
+export function createSchema<Api extends object, Ui extends object>(
+  schema: MapperxSchema<Api, Ui>
+): MapperxSchema<Api, Ui> {
+  return schema;
+}
+
+/**
+ * Verifica si un error es un MapperxError
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   mapperx(data, schema);
+ * } catch (error) {
+ *   if (isMapperxError(error)) {
+ *     console.log(error.field, error.sourceField);
+ *   }
+ * }
+ * ```
+ */
+export function isMapperxError(error: unknown): error is MapperxError {
+  return error instanceof MapperxError;
+}
+
+/**
+ * Extrae información útil de un MapperxError
+ *
+ * @example
+ * ```typescript
+ * const info = getErrorInfo(error);
+ * console.log(`Error in ${info.field}: ${info.message}`);
+ * ```
+ */
+export function getErrorInfo(error: MapperxError): {
+  field: string;
+  sourceField: string | null;
+  message: string;
+  sourceValue?: any;
+} {
+  return {
+    field: error.field,
+    sourceField: error.sourceField,
+    message: error.cause.message,
+    sourceValue: error.sourceValue,
+  };
+}
+
+// ============================================================================
+// 10. PRESET OPTIONS - Configuraciones predefinidas
+// ============================================================================
+
+/**
+ * Opciones recomendadas para PRODUCCIÓN
+ * - Strict: detecta campos extra
+ * - No skipInvalid: falla rápido si hay errores
+ */
+export const PRODUCTION_OPTIONS: MapperxOptions = {
+  strict: true,
+  skipInvalid: false,
 };
+
+/**
+ * Opciones recomendadas para DESARROLLO
+ * - Strict: detecta campos extra
+ * - No skipInvalid: muestra todos los errores
+ */
+export const DEVELOPMENT_OPTIONS: MapperxOptions = {
+  strict: true,
+  skipInvalid: false,
+};
+
+/**
+ * Opciones para TESTING
+ * - No strict: permite campos extra
+ * - skipInvalid: continúa aunque haya errores
+ */
+export const TESTING_OPTIONS: MapperxOptions = {
+  strict: false,
+  skipInvalid: true,
+};
+
+/**
+ * Opciones PERMISIVAS
+ * - No strict: ignora campos extra
+ * - skipInvalid: salta campos con errores
+ */
+export const LENIENT_OPTIONS: MapperxOptions = {
+  strict: false,
+  skipInvalid: true,
+};
+
+// ============================================================================
+// 11. VERSION INFO
+// ============================================================================
+
+export const MAPPERX_VERSION = "2.0.0";
+export const MAPPERX_NAME = "MapperX-TS Enterprise Edition";
+
+// ============================================================================
+// 12. DEFAULT EXPORT
+// ============================================================================
+
+import { mapperx } from "./core";
+
+/**
+ * Export por defecto: la función principal mapperx
+ *
+ * @example
+ * ```typescript
+ * import mapperx from 'mapperx-ts';
+ *
+ * const result = mapperx(apiData, schema);
+ * ```
+ */
+export default mapperx;
+
+// ============================================================================
+// 13. QUICK START GUIDE (Solo comentarios para documentación)
+// ============================================================================
+
+/**
+ * GUÍA RÁPIDA DE USO:
+ *
+ * 1. MAPEO BÁSICO:
+ * ```typescript
+ * import { mapperx, mxs } from 'mapperx-ts';
+ *
+ * const schema = {
+ *   id: 'user_id',
+ *   email: { from: 'email_address', validate: mxs.email }
+ * };
+ *
+ * const result = mapperx(apiData, schema);
+ * ```
+ *
+ * 2. CAMPOS COMPUTADOS:
+ * ```typescript
+ * import { mxc } from 'mapperx-ts';
+ *
+ * const schema = {
+ *   firstName: 'first_name',
+ *   lastName: 'last_name',
+ *   fullName: mxc((mapped) => `${mapped.firstName} ${mapped.lastName}`)
+ * };
+ * ```
+ *
+ * 3. TRANSFORMACIONES:
+ * ```typescript
+ * import { mxt, mxtNumber } from 'mapperx-ts';
+ *
+ * const schema = {
+ *   email: { from: 'email_address', transform: mxt.toLowerCase },
+ *   price: { from: 'raw_price', transform: mxtNumber.round(2) }
+ * };
+ * ```
+ *
+ * 4. NESTED OBJECTS:
+ * ```typescript
+ * const schema = {
+ *   user: {
+ *     from: 'user_data',
+ *     schema: {
+ *       id: 'user_id',
+ *       name: 'user_name'
+ *     }
+ *   }
+ * };
+ * ```
+ *
+ * 5. ASYNC:
+ * ```typescript
+ * import { mapperxAsync, mxc } from 'mapperx-ts';
+ *
+ * const schema = {
+ *   id: 'user_id',
+ *   userData: mxc.async(async (m, src) => {
+ *     return await fetchUserData(src.user_id);
+ *   })
+ * };
+ *
+ * const result = await mapperxAsync(apiData, schema);
+ * ```
+ *
+ * 6. BATCH PROCESSING:
+ * ```typescript
+ * import { mapperxBatch } from 'mapperx-ts';
+ *
+ * const result = mapperxBatch(apiArray, schema);
+ * console.log(result.data);   // Items exitosos
+ * console.log(result.errors); // Items con errores
+ * ```
+ */

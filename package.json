@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "start": "npx ts-node test.ts",
+    "start": "npx ts-node example.ts",
     "prepublishOnly": "npm run build", 
     "test": "vitest",
   "test:run": "vitest run"

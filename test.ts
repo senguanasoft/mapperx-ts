@@ -5,6 +5,10 @@ interface OrderDto {
   precio_unitario: string;
   cantidad: string;
   estadoDoc: string;
+  ext: {
+    price: number;
+    pvp: string;
+  };
 }
 
 interface OrderModel {
@@ -58,6 +62,10 @@ const dto: OrderDto = {
   precio_unitario: "10.50",
   cantidad: "15",
   estadoDoc: "ACTIVO",
+  ext: {
+    price: 12.5,
+    pvp: "15.00",
+  },
 };
 
 const model = mapperx(dto, orderSchema);
