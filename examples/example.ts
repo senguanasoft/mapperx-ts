@@ -13,7 +13,7 @@ import {
   mxc,
   MapperxSchema,
   AsyncMapperxSchema,
-} from "./src/index";
+} from "../src/index";
 
 // ============================================================================
 // EJEMPLO 1: MAPEO BÁSICO
@@ -360,7 +360,7 @@ const apiBatch: ApiBatchItem[] = [
   { id: "3", value: 30 },
 ];
 
-import { mapperxBatch } from "./src/index";
+import { mapperxBatch } from "../src/index";
 
 const batchResult = mapperxBatch(apiBatch, batchSchema);
 console.log(batchResult.data);

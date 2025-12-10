@@ -1,4 +1,4 @@
-import { mapperx, mxs, mxc, type MapperxSchema } from "./src/index";
+import { mapperx, mxs, mxc, type MapperxSchema } from "../src/index";
 
 interface OrderDto {
   id_articulo: string;
@@ -19,6 +19,7 @@ interface OrderModel {
   pantalon: string;
   status: string;
   test: string;
+  extend: string;
 }
 
 const orderSchema: MapperxSchema<OrderDto, OrderModel> = {
@@ -54,6 +55,7 @@ const orderSchema: MapperxSchema<OrderDto, OrderModel> = {
   test: mxc((_, src) => {
     return `Test field with productId: ${src.id_articulo}`;
   }),
+  extend: mxc.fromSource((src) => src.ext.pvp),
 };
 
 // ✅ Test real

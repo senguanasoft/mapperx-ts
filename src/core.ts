@@ -1,6 +1,5 @@
 // ============================================================================
-// MAPPERX-TS - CORE MODULE (SÍNCRONO)
-// Mapper principal con tipado fuerte y sin 'as any'
+// MAPPERX-TS - CORE MODULE
 // ============================================================================
 
 import { MapperxValidator } from "./validators";
